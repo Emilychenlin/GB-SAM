@@ -1,1 +1,1 @@
-# GB-SAM: Gaussian- and Boundary-Guided Test-Time Adaptation for Medical Image Segmentation
+# GB-SAM: Gaussian-Prior and Boundary-Guided Test-Time Adaptation for Medical Image Segmentation
