@@ -45,19 +45,7 @@ class BUSIDataset(Dataset):
         masks = []
         bboxes = []
         categories = []
-        # gt_masks = decode_mask(torch.tensor(gt_mask[None, :, :])).numpy().astype(np.uint8)
-        # areas = gt_masks.reshape(gt_masks.shape[0], -1).sum(axis=1)
-        # max_idx = areas.argmax()
 
-        # gt_mask = gt_masks[max_idx:max_idx+1]  # 取第max_idx个掩码，保持维度为(1, H, W)
-        # gt_mask_tensor = torch.tensor(gt_mask[None, :, :])
-        # largest_mask = get_largest_mask(gt_mask_tensor).squeeze(0).numpy().astype(np.uint8)
-
-        # masks.append(largest_mask)
-        # x, y, w, h = cv2.boundingRect(largest_mask)
-        # bboxes.append([x, y, x + w, y + h])
-        # categories.append("0")
-        # 假设 gt_mask 是 (H, W) 的 numpy 或 torch.Tensor
         if isinstance(gt_mask, torch.Tensor):
             mask = gt_mask.cpu().numpy()
         else:
@@ -66,11 +54,9 @@ class BUSIDataset(Dataset):
         if mask.ndim == 3 and mask.shape[0] == 1:
             mask = mask.squeeze(0)
 
-        # 确保是 uint8 类型的二值图像（255 是目标）
         if mask.dtype != np.uint8:
             mask = (mask > 127).astype(np.uint8) * 255
 
-        # 获取目标区域的坐标（白色区域 == 255）
         y_indices, x_indices = np.where(mask == 255)
 
         if len(x_indices) == 0 or len(y_indices) == 0:
@@ -82,9 +68,8 @@ class BUSIDataset(Dataset):
             y_max = np.max(y_indices)
             bounding_box = [[x_min, y_min, x_max, y_max]]
 
-        # 存储 mask 和 bbox
         masks.append(mask)
-        bboxes.append(bounding_box[0])  # 因为是 [[...]]
+        bboxes.append(bounding_box[0]) 
         categories.append("0")
 
         # print("gt_masks.sum():", gt_masks.sum())
