@@ -188,15 +188,10 @@ def decode_mask(mask):
     return new_mask
 
 def get_largest_mask(mask):
-    """
-    从输入的 [1, H, W] 格式的标注中，提取前景中最大的目标区域（按像素数量）作为独立掩码。
-    返回形状为 [1, H, W]。
-    """
     masks = decode_mask(mask)  # [N, H, W]
     if masks.shape[0] == 0:
         return torch.zeros_like(mask)
 
-    # 计算每个掩码中前景像素的数量
     areas = masks.sum(dim=(1, 2))  # shape: [N]
     max_index = torch.argmax(areas).item()
     largest_mask = masks[max_index].unsqueeze(0)  # [1, H, W]
