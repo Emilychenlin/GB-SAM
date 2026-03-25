@@ -9,7 +9,7 @@ ROOT_DIR=$(pwd)
 mkdir -p ISIC Kvasir-SEG BUSI REFUGE
 
 ############################
-# 1. Kvasir-SEG (公开直链)
+# 1. Kvasir-SEG 
 ############################
 echo "[1/4] Downloading Kvasir-SEG..."
 
