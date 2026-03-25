@@ -84,7 +84,7 @@ def uniform_sampling(mask, N):
     if not isinstance(mask, np.ndarray):
         mask = mask.cpu().numpy().astype(np.uint8)
 
-    print("打印掩码中的唯一值：", np.unique(mask)) 
+    print("Print the unique value in the mask：", np.unique(mask)) 
     if np.sum(mask == 255) == 0:
         indices = np.argwhere(mask == 0) 
     elif np.sum(mask == 0) == 0:
