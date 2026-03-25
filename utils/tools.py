@@ -34,40 +34,36 @@ def get_prompts(cfg: Box, bboxes, gt_masks):
     return prompts
 
 def uniform_sampling(mask, N):
-    """
-    从mask中均匀采样N个点，确保返回形状为 (N, 2)。当N=1时，取白色区域中心点。
-    """
     n_points = []
     if not isinstance(mask, np.ndarray):
         mask = mask.cpu().numpy().astype(np.uint8)
 
-    print("打印掩码中的唯一值：", np.unique(mask))  # 打印掩码中的唯一值
+    print("Print the unique value in the mask：", np.unique(mask))  
     if np.sum(mask == 255) == 0:
-        indices = np.argwhere(mask == 0)  # 采样背景点
+        indices = np.argwhere(mask == 0)  
     elif np.sum(mask == 0) == 0:
-        indices = np.argwhere(mask == 255)  # 采样前景点
+        indices = np.argwhere(mask == 255)  
     else:
-        indices = np.argwhere(mask == 255)  # 采样前景点
+        indices = np.argwhere(mask == 255)  
 
-    # **防止空数组**
     if len(indices) == 0:
         print("Warning: No valid points found in mask, skipping.")
-        n_points.append(np.zeros((N, 2)))  # 避免后续代码崩溃
+        n_points.append(np.zeros((N, 2))) 
     else:
         if N == 1:
-            # 当N=1时，计算白色区域的中心点
-            center_y = np.mean(indices[:, 0])  # y坐标均值
-            center_x = np.mean(indices[:, 1])  # x坐标均值
-            sampled_points = np.array([[center_x, center_y]])  # 形状为 (1, 2)
+           
+            center_y = np.mean(indices[:, 0])  
+            center_x = np.mean(indices[:, 1])  
+            sampled_points = np.array([[center_x, center_y]])  # (1, 2)
         else:
-            # 其他情况下，随机均匀采样
+
             sampled_indices = np.random.choice(len(indices), N, replace=True)
-            sampled_points = indices[sampled_indices]  # (N, 2), 顺序是 [y, x]
-            sampled_points = np.flip(sampled_points, axis=1)  # 变为 [x, y]
+            sampled_points = indices[sampled_indices]  # (N, 2),  [y, x]
+            sampled_points = np.flip(sampled_points, axis=1)  #  [x, y]
         
         n_points.append(sampled_points)
 
-    return np.array(n_points) # 返回 (N, 2) 或 (1, 2)
+    return np.array(n_points) # (N, 2) or (1, 2)
 
 def get_multi_distance_points(input_point, mask, points_nubmer):
     new_points = np.zeros((points_nubmer + 1, 2))
@@ -130,84 +126,55 @@ def get_point_prompt_max_dist(mask, num_points):
 def get_point_prompt_within_mask(mask, num_points, radius=50):
     n_points = []
     # for mask in masks:
-    # 只取掩膜中值为255的白色区域
     mask_np = mask
     print("mask.shape in get_point_prompt_within_mask:", mask_np.shape)
-    y, x = np.where(mask_np == 255)  # 获取所有白色区域的像素位置
-    white_pixels = list(zip(y, x))  # 白色区域的像素坐标
+    y, x = np.where(mask_np == 255)  
+    white_pixels = list(zip(y, x)) 
     
     if len(white_pixels) == 0:
-        n_points.append(np.zeros((num_points, 2)))  # 如果没有白色区域，则返回空点
+        n_points.append(np.zeros((num_points, 2)))  
         print("返回空点！")
         # continue
 
-    # 计算白色区域的质心（中心点）
     center_y, center_x = np.mean(y), np.mean(x)
 
     points = []
-    # 生成至少一个点在中心
     points.append([center_y, center_x])
 
-    # 生成其他的点，且这些点都在白色区域内
     for _ in range(num_points - 1):
-        # 随机选取一个点，确保在白色区域内
         point = white_pixels[np.random.randint(0, len(white_pixels))]
         points.append(point)
 
-    n_points.append(np.array(points))  # 将生成的点添加到结果列表
+    n_points.append(np.array(points))  
     
     return np.array(n_points)
 
 def get_point_prompts_seg(gt_masks, num_points):
-    """
-    生成前景采样点，并返回 point_coords 和 point_labels，确保 shape 为 (N, 2)
-    """
     prompts = []
     for mask in gt_masks:
-        # mask = (mask > 0).to(torch.uint8)  # 归一化成 0/1
+        # mask = (mask > 0).to(torch.uint8) 
         
-        # **获取前景点**
         # po_points = get_point_prompt_within_mask([mask.cpu().numpy()], num_points)
         print("mask.shape in get_point_prompts:", mask.shape)
         po_points = uniform_sampling(mask, num_points)
         # po_points = sample_black_gray_points(mask, debug=True)
         print("po_points.shape:", po_points.shape)  # (1, num_points, 2)
 
-        # **转换为 PyTorch tensor**
         po_point_coords = torch.tensor(po_points, dtype=torch.float32, device=mask.device).squeeze(0)  # (num_points, 2)
 
-        print("po_point_coords shape:", po_point_coords.shape)  # 预期 (num_points, 2)
+        print("po_point_coords shape:", po_point_coords.shape)  # (num_points, 2)
 
-        # **创建对应的 labels**
-        po_point_labels = torch.ones(po_point_coords.shape[0], dtype=torch.int, device=po_point_coords.device)  # 前景点标签为 1
+        po_point_labels = torch.ones(po_point_coords.shape[0], dtype=torch.int, device=po_point_coords.device) 
 
-        print(f"Final point_coords shape: {po_point_coords.shape}")  # 应该是 (num_points, 2)
-        print(f"Final point_labels shape: {po_point_labels.shape}")  # 应该是 (num_points,)
+        print(f"Final point_coords shape: {po_point_coords.shape}")  
+        print(f"Final point_labels shape: {po_point_labels.shape}") 
 
-        # **打包成 tuple**
         in_points = (po_point_coords, po_point_labels)
         prompts.append(in_points)
-        # point_color = (0, 255, 255)  # 采用红色标注点
-        # radius = 5  # 设置点的大小
-        # print("point_coords in use:", po_point_coords.shape)
-        # mask=mask
-        # mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)  # 转换为三通道 RGB 图像
-        # print("masks before circle:", mask.shape)
-        # for (x, y) in po_point_coords:
-        #     cv2.circle(mask, (int(x), int(y)), radius, point_color, -1)  # -1 表示填充圆
-        # print("masks after circle:", mask.shape)
-        # image_pil = Image.fromarray(mask)
-        # image_pil.save('output_in_get_point_prompts.png')
-        # exit()
 
     return prompts
 
 def generate_bounding_boxes_from_mask(mask):
-    """
-    从二值掩码图像生成包围白色区域的边界框。
-    :param mask: 输入的二值图像，白色区域为255，其他为0。
-    :return: 包围白色区域的边界框列表，每个框格式为 [x_min, y_min, x_max, y_max]。
-    """
     if isinstance(mask, torch.Tensor):
         mask = mask.cpu().numpy()
 
@@ -217,14 +184,11 @@ def generate_bounding_boxes_from_mask(mask):
     if mask.dtype != np.uint8:
         mask = (mask > 127).astype(np.uint8) * 255
     
-    # 找到白色区域的坐标
-    # 这里我们假设白色区域是255，黑色区域是0
-    y_indices, x_indices = np.where(mask == 255)  # 获取白色区域的所有坐标
+    y_indices, x_indices = np.where(mask == 255) 
 
     if len(x_indices) == 0 or len(y_indices) == 0:
-        return []  # 没有白色区域时返回空列表
+        return []  
 
-    # 获取白色区域的最小和最大坐标，形成边界框
     x_min = np.min(x_indices)
     y_min = np.min(y_indices)
     x_max = np.max(x_indices)
@@ -235,15 +199,7 @@ def generate_bounding_boxes_from_mask(mask):
     return bounding_box
 
 def visualize_and_save_masks(masks, output_dir, img_name, expected_size=None):
-    """
-    保存单通道二值掩码为 PNG 图像，并确保不改变原图大小
 
-    Args:
-        masks (np.ndarray): 二值掩码，形状为 (1, H, W)
-        output_dir (str): 掩码保存目录
-        file_name_prefix (str): 输出文件名前缀
-        expected_size (tuple): 可选，期望的图像大小 (W, H)，如与原图一致时可校验
-    """
     import os
     import numpy as np
     from PIL import Image
@@ -255,8 +211,7 @@ def visualize_and_save_masks(masks, output_dir, img_name, expected_size=None):
     if expected_size is not None:
         assert mask.shape[::-1] == expected_size, f"掩码尺寸 {mask.shape[::-1]} 与原图尺寸 {expected_size} 不一致"
 
-    # 保存时不改变尺寸
-    mask_img = Image.fromarray((mask * 255).astype(np.uint8), mode='L')  # 'L' 表示灰度图
+    mask_img = Image.fromarray((mask * 255).astype(np.uint8), mode='L') 
 
     output_path = os.path.join(output_dir, f"{img_name}.png")
     mask_img.save(output_path)
@@ -264,29 +219,17 @@ def visualize_and_save_masks(masks, output_dir, img_name, expected_size=None):
 import matplotlib.pyplot as plt
 
 def save_cam_overlay(img_np, heatmap, cam_dir, file_prefix):
-    """
-    将热力图叠加到原图并保存
 
-    参数:
-        image_tensor: [3,H,W] Tensor, 范围 0~1
-        heatmap: [H,W] Tensor, 热力图
-        cam_dir: str, 保存目录
-        file_prefix: str, 图片文件名前缀
-    """
-    # 确保目录存在
     os.makedirs(cam_dir, exist_ok=True)
     
-    # 转成 numpy
     # img_np = image_tensor.permute(1,2,0).cpu().numpy()
     heatmap_np = heatmap.cpu().numpy()
     
-    # 绘图
     plt.figure(figsize=(6,6))
     plt.imshow(img_np)
     plt.imshow(heatmap_np, cmap='jet', alpha=0.5)
     plt.axis('off')
-    
-    # 保存
+
     save_path = os.path.join(cam_dir, f"{file_prefix}.png")
     plt.savefig(save_path, bbox_inches='tight', pad_inches=0)
     plt.close()
