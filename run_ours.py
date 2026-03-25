@@ -17,9 +17,9 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 def collect_params_custom(predictor):
     """
     收集：
-    1. image_encoder.blocks.11（ViT最后一层Block）
-    2. image_encoder.heatmap_proj（高斯热力图投影层）
-    3. image_encoder.anchor（Anchor模块）
+    1. image_encoder.blocks.11
+    2. image_encoder.heatmap_proj
+    3. image_encoder.anchor
 
     返回：
     - params: List[Parameter]
@@ -46,17 +46,17 @@ def collect_params_custom(predictor):
 
 def configure_model_custom(predictor):
     """
-    设置模型为部分可训练：
-    只保留以下部分为 requires_grad=True：
+    
+    requires_grad=True：
     - image_encoder.blocks.11（最后一层Block）
     - image_encoder.heatmap_proj
     - image_encoder.anchor
     """
-    # 整体冻结
+    # 
     predictor.model.eval()
     predictor.model.requires_grad_(False)
 
-    # 解冻目标模块
+    # 
     target_names = [
         "image_encoder.blocks.11",
         # "image_encoder.heatmap_proj",
@@ -87,15 +87,15 @@ def Adapt(fabric, optimizer, cfg, predictor, load_datasets, name=cfg.name, iters
         img_name = img_names[0]
         num_images = images.size(0)
 
-        # 创建保存目录
+        # 
         pred_mask_dir = os.path.join(cfg.out_dir, "pred_masks")
         # matrices = os.path.join(cfg.out_dir, "matrices")
         os.makedirs(pred_mask_dir, exist_ok=True)
 
-        # 将图像搬到 GPU
+        # 
         images = images.to(fabric.device)
 
-        # 获取 prompts
+        # prompts
         prompts = get_prompts(cfg, bboxes, gt_masks)
         
         img = images[0].cpu()
@@ -103,20 +103,19 @@ def Adapt(fabric, optimizer, cfg, predictor, load_datasets, name=cfg.name, iters
         if img.dtype == torch.float32 or img.max() <= 1.0:
             img = img * 255.0
 
-        # Step 2: 转为 numpy 并调整形状
-        # 1. 如果值在 [0, 1] 或 [-1, 1]，先归一化到 [0, 255]
+        # Step 2: to numpy 
         img = (img - img.min()) / (img.max() - img.min()) * 255.0
-        # 2. 转成 uint8 类型
+        # 2. to uint8 
         img = img.to(torch.uint8)
-        # 3. 转成 numpy，CHW -> HWC
+        # 3. to numpy，CHW -> HWC
         img_np = img.permute(1, 2, 0).cpu().numpy()  # [3, H, W] -> [H, W, 3]
         # print("img.shape:", img_np.shape)
         
         # print("prompts.shape:", prompts.shape)
         # print("prompts[0].shape:", prompts[0].shape)
-        box_coords = np.array(prompts[0])  # 确保它是一个 (4,) 数组
+        box_coords = np.array(prompts[0])  
         # print("box_coords.shape:", box_coords.shape)
-        box_coords = box_coords.reshape(1, 4)  # 转换成 (1, 4) 的二维数组
+        box_coords = box_coords.reshape(1, 4) 
         # print("box_coords shape:", box_coords.shape)
         # print("box_coords:", box_coords)
         
@@ -139,13 +138,12 @@ def Adapt(fabric, optimizer, cfg, predictor, load_datasets, name=cfg.name, iters
         
         loss_align.backward()
         optimizer.step()
-        # 更新梯度缓存
+        # 
         optimizer.zero_grad()
         
-        # 保存掩码图像
+        # save mask
         visualize_and_save_masks(pred_masks, pred_mask_dir, img_name)
 
-        # 处理 Ground Truth 掩码，保持一致性
         gt_masks = gt_masks[0]
         print("gt_masks.shape:", gt_masks.shape)
         if gt_masks.max() > 1:
@@ -153,31 +151,29 @@ def Adapt(fabric, optimizer, cfg, predictor, load_datasets, name=cfg.name, iters
         else:
             gt_bin = gt_masks.float()
 
-        # 转为 numpy 格式，用于 Dice/mIoU 计算
-        gt_np = gt_bin[0].cpu().numpy().astype(np.uint8) * 255  # -> (H, W), 取白色为目标区域
-        # pred_np = pred_np[0] * 255  # (H, W)，转换为 0/255 格式
+        # to numpy
+        gt_np = gt_bin[0].cpu().numpy().astype(np.uint8) * 255  
         # print("gt_np.shape:", gt_np.shape)
         # print("gt_np.max:", gt_np.max())
         # print("pred_masks.shape:", pred_masks.shape)
         # print("pred_masks.max:", pred_masks.max())
         # 从 (1, H, W) -> (H, W)
-        pred_np = pred_masks[0]  # 去掉 batch 维
-        # 转成 numpy 格式（如果还不是）
+        pred_np = pred_masks[0]  # out batch 
+        
         if isinstance(pred_np, torch.Tensor):
             pred_np = pred_np.cpu().numpy()
-        # 转成 uint8 二值图，背景 0，前景 255
+    
         pred_np = pred_np.astype(np.uint8) * 255 
 
-        # Dice 计算
+        # Dice 
         batch_dice = calculate_dice(gt_np, pred_np)
-        # mIoU 计算
+        # mIoU 
         batch_iou = calculate_miou(gt_np, pred_np)
 
-        # F1-score 计算（F1 = 2 * precision * recall / (precision + recall)）
-        # 这里我们用 Dice 近似 F1-score（因为二者在 binary segmentation 下等价）
+        #  Dice ~ F1-score
         batch_f1 = batch_dice
 
-        # 更新指标
+        # update
         ious.update(batch_iou, num_images)
         f1_scores.update(batch_f1, num_images)
         dice_scores.update(batch_dice, num_images)
@@ -190,10 +186,10 @@ def Adapt(fabric, optimizer, cfg, predictor, load_datasets, name=cfg.name, iters
         "Mean F1": f"{batch_f1:.4f}",
         "iters": iters
         }
-        # 每条都写入csv
+        # write csv
         write_csv(os.path.join(cfg.out_dir, f"{cfg.dataset}-{cfg.prompt}.csv"), csv_dict, csv_head=cfg.csv_keys)
         
-        # 累加
+        # +
         ious.update(batch_iou, num_images)
         f1_scores.update(batch_f1, num_images)
         dice_scores.update(batch_dice, num_images)
@@ -206,7 +202,7 @@ def Adapt(fabric, optimizer, cfg, predictor, load_datasets, name=cfg.name, iters
 
     fabric.print(f'Test [{iters}]:  Mean Dice: [{dice_scores.avg:.4f}]  -- Mean IoU: [{ious.avg:.4f}] -- Mean F1: [{f1_scores.avg:.4f}]')
 
-    # 写入 CSV
+    # CSV
     csv_dict = {
         "Name": name,
         "Prompt": cfg.prompt,
@@ -243,7 +239,7 @@ def main(cfg: Box, ckpt: str = None) -> None:
     accelerator="auto",
     devices=num_devices,
     strategy="auto",
-    precision="16-mixed",  # 启用 AMP 混合精度
+    precision="16-mixed",  
 )
 
     if fabric.global_rank == 0:
@@ -253,7 +249,6 @@ def main(cfg: Box, ckpt: str = None) -> None:
         with open(cfg_dict_path, "w") as file:
             yaml.dump(cfg_dict, file)
 
-        # 写入表头
         create_csv(os.path.join(cfg.out_dir, f"{cfg.dataset}-{cfg.prompt}.csv"), csv_head=cfg.csv_keys)
     
     sam_checkpoint = os.path.abspath("checkpoints/sam_vit_b_01ec64.pth")
@@ -269,7 +264,6 @@ def main(cfg: Box, ckpt: str = None) -> None:
     params, _ = collect_params_custom(ours_predictor)
     optimizer = torch.optim.AdamW(params, lr=1e-4)
     
-    # 加载数据集的函数
     load_datasets = call_load_dataset(cfg)
 
     Adapt(fabric, optimizer, cfg, predictor, load_datasets, name=cfg.name, iters=0)
