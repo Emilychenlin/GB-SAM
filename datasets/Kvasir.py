@@ -47,7 +47,6 @@ class KvasirDataset(Dataset):
         # areas = gt_masks.reshape(gt_masks.shape[0], -1).sum(axis=1)
         # max_idx = areas.argmax()
 
-        # gt_mask = gt_masks[max_idx:max_idx+1]  # 取第max_idx个掩码，保持维度为(1, H, W)
         gt_mask_tensor = torch.tensor(gt_mask[None, :, :])
         largest_mask = get_largest_mask(gt_mask_tensor).squeeze(0).numpy().astype(np.uint8)
 
