@@ -13,7 +13,7 @@ config = {
     "eval_interval": 1,
     "dataset": "Kvasir",
     "prompt": "box",
-    "out_dir": "output/Kvasir_sam", # 输出文件夹名称
+    "out_dir": "output/Kvasir_sam", 
     "name": "baseline",
     "corrupt": None,
     "visual": False,
