@@ -82,9 +82,6 @@ def calculate_dice_black_gray_target(gt_mask, pred_mask, smooth=1e-8):
     Returns:
         float: Dice coefficient.
     """
-    # Ensure masks are binary for target regions
-    # print("真实掩码唯一值:", np.unique(gt_mask))  # 应包含0（目标区域）
-    # print("预测掩码唯一值:", np.unique(pred_mask))  # 应包含255（目标区域）
 
     gt_target = ((gt_mask == 0) | (gt_mask == 128)).astype(np.float32)  # Black (0) or Gray (128) as target
     pred_target = (pred_mask == 255).astype(np.float32)  # White (255) as target
