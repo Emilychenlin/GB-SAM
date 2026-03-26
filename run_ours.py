@@ -16,12 +16,12 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 def collect_params_custom(predictor):
     """
-    收集：
+    collect：
     1. image_encoder.blocks.11
     2. image_encoder.heatmap_proj
     3. image_encoder.anchor
 
-    返回：
+return：
     - params: List[Parameter]
     - names: List[str]
     """
@@ -48,7 +48,7 @@ def configure_model_custom(predictor):
     """
     
     requires_grad=True：
-    - image_encoder.blocks.11（最后一层Block）
+    - image_encoder.blocks.11（the lasr Block）
     - image_encoder.heatmap_proj
     - image_encoder.anchor
     """
