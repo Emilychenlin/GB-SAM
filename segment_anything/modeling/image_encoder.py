@@ -14,64 +14,56 @@ import numpy as np
 
 def generate_gaussian_heatmap(shape, points, sigma, output_dir='data/point_img/embedding_gas/heatmaps'):
     """
-    生成多个点的高斯热图并保存到指定目录
-    :param shape: 热图的尺寸 (height, width)
-    :param points: 包含多个中心坐标的列表 [(x1, y1), (x2, y2), ...]
-    :param sigma: 高斯分布的标准差
-    :param output_dir: 输出保存热图的目录
-    :return: 高斯热图 (torch.Tensor)
+    :param shape: (height, width)
+    :param points: [(x1, y1), (x2, y2), ...]
+    :param sigma: Standard deviation of the Gaussian distribution
+    :param output_dir: Directory to save the output heatmap
+    :return: Gaussian heatmap (torch.Tensor)
     """
-    # 创建输出目录（如果不存在的话）
     os.makedirs(output_dir, exist_ok=True)
     
-    # 生成网格
     x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
     x = torch.tensor(x, dtype=torch.float32)
     y = torch.tensor(y, dtype=torch.float32)
     x = x.to('cuda')
     y = y.to('cuda')
     
-    # 初始化热图
     # heatmap = torch.zeros(shape, dtype=torch.float32, device='cpu')
     heatmap = torch.zeros(shape, dtype=torch.float32, device='cuda')
     
-    # 计算多个点的高斯分布并叠加
     for center in points:
         dist_sq = (x - center[0]) ** 2 + (y - center[1]) ** 2
         heatmap += torch.exp(-dist_sq / (2 * sigma ** 2))
     
-    # 归一化热图
     heatmap = torch.clamp(heatmap, 0, 1)
     
     return heatmap
 
 def boundary_consistency_loss(F_s, F_d, M, eps=1e-8):
     """
-    计算 Boundary-Consistent Alignment Loss（基于皮尔逊相关系数）
+    calculate Boundary-Consistent Alignment Los
 
-    参数:
+    para:
         F_s: 浅层特征 (B, H, W, C)
         F_d: 深层特征 (B, H, W, C)
         M: 锚点 attention map (B, 1, H, W)
-    返回:
-        loss: scalar（越小越好，负相关系数）
+    return:
+        loss: scalar
     """
     M = M.float()
 
-    # 保证 shape 一致 [B, C, H, W]
+    # [B, C, H, W]
     F_s = F_s.permute(0, 3, 1, 2)
     F_d = F_d.permute(0, 3, 1, 2)
 
-    # 乘上 mask，保留边缘区域
     F_s_b = F_s * M  # (B, C, H, W)
     F_d_b = F_d * M
 
-    # reshape 成 (B, C, H*W)
+    # reshape to (B, C, H*W)
     B, C, H, W = F_s_b.shape
     F_s_flat = F_s_b.view(B, C, -1)  # (B, C, N)
     F_d_flat = F_d_b.view(B, C, -1)
 
-    # 计算每个 batch、每个通道上的皮尔逊相关系数
     mean_s = F_s_flat.mean(dim=-1, keepdim=True)
     mean_d = F_d_flat.mean(dim=-1, keepdim=True)
 
@@ -85,10 +77,8 @@ def boundary_consistency_loss(F_s, F_d, M, eps=1e-8):
 
     corr = numerator / denominator  # (B, C)
 
-    # 取 1 - corr 作为 loss（越相关越小）
     loss_per_channel = 1 - corr  # (B, C)
 
-    # 对 batch 和 channel 求平均
     loss = loss_per_channel.mean()
 
     return loss
@@ -117,20 +107,13 @@ class Anchor(nn.Module):
 class AnchorQualityChecker:
     def __init__(self, threshold_ratio=1.5, min_value=0.1):
         """
-        :param threshold_ratio: box 内与外部响应比值超过这个阈值才认为是高质量
-        :param min_value: box 内平均值至少大于该值
+        :param threshold_ratio
+        :param min_value
         """
         self.threshold_ratio = threshold_ratio
         self.min_value = min_value
 
     def is_high_quality(self, anchor_map, box):
-        """
-        判断 anchor_map 是否为高质量边缘图
-
-        :param anchor_map: Tensor, shape=(1, 1, H, W) 或 (1, H, W)
-        :param box: (x1, y1, x2, y2) 形式的整数坐标
-        :return: bool 是否为高质量
-        """
         if anchor_map.ndim == 4:
             anchor_map = anchor_map.squeeze(0).squeeze(0)  # -> (H, W)
         elif anchor_map.ndim == 3:
@@ -139,17 +122,14 @@ class AnchorQualityChecker:
         x1, y1, x2, y2 = box
         H, W = anchor_map.shape
 
-        # 防止越界
         x1, x2 = max(0, x1), min(W - 1, x2)
         y1, y2 = max(0, y1), min(H - 1, y2)
 
-        # 提取 box 区域和非 box 区域
         box_region = anchor_map[y1:y2+1, x1:x2+1]
         mask = torch.ones_like(anchor_map, dtype=torch.bool)
         mask[y1:y2+1, x1:x2+1] = False
         outside_region = anchor_map[mask]
 
-        # 计算均值（也可以用 max）
         box_mean = box_region.mean().item()
         outside_mean = outside_region.mean().item()
 
@@ -166,13 +146,13 @@ class ImageEncoderViT(nn.Module):
         self,
         img_size: int = 1024,
         patch_size: int = 16,
-        in_chans: int = 3,#图像的通道数，RGB图像
-        embed_dim: int = 768,#每个patch的嵌入维度
-        depth: int = 12,#VIT的深度，即堆叠的Block的块的数量
-        num_heads: int = 12,#每个VIT中头的数量，只关注一个
+        in_chans: int = 3,
+        embed_dim: int = 768,
+        depth: int = 12,
+        num_heads: int = 12,
         mlp_ratio: float = 4.0,
         out_chans: int = 256,
-        qkv_bias: bool = True,#在三个特征矩阵上添加可学习的偏置
+        qkv_bias: bool = True,
         norm_layer: Type[nn.Module] = nn.LayerNorm,
         act_layer: Type[nn.Module] = nn.GELU,
         use_abs_pos: bool = True,
@@ -211,19 +191,17 @@ class ImageEncoderViT(nn.Module):
             embed_dim=embed_dim,
         )
 
-        #nn.Parameter定义模型参数的类
+        #nn.Parameter
         self.pos_embed: Optional[nn.Parameter] = None
         if use_abs_pos:
             # Initialize absolute positional embedding with pretrain image size.
-            #每个patch的第一张图像；patch数量；patch数量；每个patch的嵌入维度（Patch embedding dimension）
             self.pos_embed = nn.Parameter(
                 torch.zeros(1, img_size // patch_size, img_size // patch_size, embed_dim)
             )
 
-        self.blocks = nn.ModuleList()#创建self.blocks空间，其被用来存储多个 Block 实例
-        # 计算四等分的位置索引
-        quarter_indices = {(depth // 4)-1, (depth // 2)-1, (3 * depth // 4)-1, depth - 1}
+        self.blocks = nn.ModuleList()
 
+        quarter_indices = {(depth // 4)-1, (depth // 2)-1, (3 * depth // 4)-1, depth - 1}
         for i in range(depth):
             block = Block(
                 dim=embed_dim,
@@ -264,7 +242,7 @@ class ImageEncoderViT(nn.Module):
             LayerNorm2d(out_chans),
         )
         
-        self.heatmap_proj = nn.Linear(1, self.embed_dim)  # 将1维投影为768维
+        self.heatmap_proj = nn.Linear(1, self.embed_dim)  
 
     def forward(self,
                 x: torch.Tensor, 
@@ -279,30 +257,25 @@ class ImageEncoderViT(nn.Module):
         # print("x.max before conv:", torch.max(x))
         # print("x.min before conv:", torch.min(x))
         x = self.patch_embed(x)
-        # 嵌入点信息
+        # 
         # print("x.max after conv:", torch.max(x))
         # print("x.min after conv:", torch.min(x))
         # position id
         if self.pos_embed is not None:
             x = x + self.pos_embed
         
-        # 将prompt输入进input
         if input_points!= None and input_box==None and feature_map==None:
             # point
             point_tensor =  torch.zeros(1, self.img_size // self.patch_size, self.img_size // self.patch_size, self.embed_dim, dtype=torch.float32)
-            # # 将创建的张量移到cuda上
+
             point_tensor = point_tensor.to('cuda')
             print("input_points:", input_points)
 
-            #使用高斯热图
-            sigma = 2  # 高斯标准差，决定扩散范围
+            sigma = 2  
 
-            # 位置增强
             heatmap = generate_gaussian_heatmap((64, 64), input_points, sigma)
-            # # 扩大高值区域
             # heatmap = heatmap ** 0.01
             
-            # 假设 heatmap 是 (64, 64)
             heatmap = heatmap.unsqueeze(-1).expand(-1, -1, 768)  # -> (64, 64, 768)
             heatmap = heatmap.unsqueeze(0)
             
@@ -314,27 +287,24 @@ class ImageEncoderViT(nn.Module):
             # print("man_value in heatmap:", max_value)
             # print("min_value in heatmap:", min_value)
 
-            # 限制热图值的最大值，防止数值溢出
             point_tensor = torch.clamp(point_tensor, max=1.0)
 
-            # 计算 block 处插入的索引 注意是从0开始
             first = 0
             quarter = len(self.blocks) // 4
             half = len(self.blocks) // 2 
             three_quarters = 3 * len(self.blocks) // 4
             all = len(self.blocks)
                 
-            # 位置增强
             for i, blk in enumerate(self.blocks):
-                if i == 5:  # 第6层（索引从0开始）
-                    self.shallow_feature = x  # 形状: (B, H, W, C) = (1, 64, 64, 768)
+                if i == 5: 
+                    self.shallow_feature = x  # (B, H, W, C) = (1, 64, 64, 768)
                     self.anchor_map = self.anchor(self.shallow_feature)
                     if self.anchor_map == None:
                         print("Edge Anchor Wrong!")
                     
                 if i in [first, quarter, half, three_quarters]:
                     print("i:", i)
-                    x = x + point_tensor  # 在1/4, 2/4, 3/4处添加point_tensor
+                    x = x + point_tensor  
                     
                 x = blk(x)
                 
@@ -350,42 +320,40 @@ class ImageEncoderViT(nn.Module):
             x1, y1, x2, y2 = input_box
             print("x1y1x2y2:", x1, y1, x2, y2)
             
-            # 1. 计算中心点和最短边
             x_center = (x1 + x2) / 2
             y_center = (y1 + y2) / 2
             min_half_size = min(x2 - x1, y2 - y1) / 2
             max_half_size = max(x2 - x1, y2 - y1) / 2
-            #  设置 sigma 为最长斜边一半的 0.5 倍，可调节平滑度
+            
             diagonal = (min_half_size ** 2 + max_half_size ** 2) ** 0.5
             sigma = diagonal * 0.5
-            # 3. 生成高斯热图（输入 shape 是 H x W）
+            # 3
             heatmap = generate_gaussian_heatmap((64, 64), [(x_center, y_center)], sigma).to('cuda')  # shape: (64, 64)
-            # 扩大高值区域
+
             heatmap = heatmap ** 0.01
-            # heatmap: (64, 64) 广播
+            # heatmap: (64, 64) 
             heatmap = heatmap.unsqueeze(-1).expand(-1, -1, 768)  # → (64, 64, 768)
-            # 在最前面加一个 batch 维度
+
             heatmap = heatmap.unsqueeze(0)        # → (1, 64, 64, 768)
 
-            # 加入 box_tensor 特征图
+
             box_tensor += heatmap  # (1, 64, 64, 768)
 
-            # 计算 block 处插入的索引
             first = 0
             quarter = len(self.blocks) // 4
             half = len(self.blocks) // 2
             three_quarters = 3 * len(self.blocks) // 4
 
             for i, blk in enumerate(self.blocks):
-                if i == 5:  # 第6层（索引从0开始）
-                    self.shallow_feature = x  # 形状: (B, H, W, C) = (1, 64, 64, 768)
+                if i == 5:  
+                    self.shallow_feature = x  # shape: (B, H, W, C) = (1, 64, 64, 768)
                     self.anchor_map = self.anchor(self.shallow_feature)
                     if self.anchor_map == None:
                         print("Edge Anchor Wrong!")
                 
                 if i in [first, quarter, half, three_quarters]:
                     print("i:", i)
-                    x = x + box_tensor  # 在1/4, 2/4, 3/4处添加box_tensor
+                    x = x + box_tensor  # 在1/4, 2/4, 3/4
                     
                 x = blk(x)
                 
@@ -395,8 +363,8 @@ class ImageEncoderViT(nn.Module):
             # print("SAM!")
 
             for i, blk in enumerate(self.blocks):            
-                if i == 5:  # 第6层（索引从0开始）
-                    self.shallow_feature = x  # 形状: (B, H, W, C) = (1, 64, 64, 768)
+                if i == 5:  
+                    self.shallow_feature = x  # shape: (B, H, W, C) = (1, 64, 64, 768)
                     self.anchor_map = self.anchor(self.shallow_feature)
                     if self.anchor_map == None:
                         print("Edge Anchor Wrong!")
@@ -410,7 +378,6 @@ class ImageEncoderViT(nn.Module):
 
         # print("x in image_encoder before permute:", x.shape)
 
-        #调整维度后再送入neck层
         temp_x=x.permute(0, 3, 1, 2)
         # print("x in image_encoder after permute:", x.shape)
         x = self.neck(temp_x)
@@ -428,17 +395,14 @@ class ImageEncoderViT(nn.Module):
                 )
                 print("High anchor!")
             else:
-                # 设置一个无效值
                 loss_align = torch.tensor(0.0, device=self.shallow_feature.device, requires_grad=True)
                 print("Loss_align is invalide!")
         else:
-            # 设置一个无效值
             loss_align = torch.tensor(0.0, device=self.shallow_feature.device, requires_grad=True)
             print("Anchor!")
             
         return x, loss_align
 
-#规范+注意力+（残差）-规范+MLP
 class Block(nn.Module):
     """Transformer blocks with support of window attention and residual propagation blocks"""
 
@@ -486,7 +450,6 @@ class Block(nn.Module):
 
         self.window_size = window_size
     
-    # 位置增强
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shortcut = x
         x = self.norm1(x)
@@ -532,7 +495,7 @@ class Attention(nn.Module):
         self.num_heads = num_heads
         # 768/12=64
         head_dim = dim // num_heads
-        # 缩放因子为8
+
         self.scale = head_dim**-0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
@@ -547,9 +510,8 @@ class Attention(nn.Module):
             self.rel_pos_h = nn.Parameter(torch.zeros(2 * input_size[0] - 1, head_dim))
             self.rel_pos_w = nn.Parameter(torch.zeros(2 * input_size[1] - 1, head_dim))
 
-        self.Attn = None  # 保存注意力分数
+        self.Attn = None  
     
-    # 位置增强
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, H, W, _ = x.shape
         # qkv with shape (3, B, nHead, H * W, C)
