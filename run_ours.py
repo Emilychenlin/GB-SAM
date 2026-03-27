@@ -21,7 +21,7 @@ def collect_params_custom(predictor):
     2. image_encoder.heatmap_proj
     3. image_encoder.anchor
 
-return：
+    return：
     - params: List[Parameter]
     - names: List[str]
     """
