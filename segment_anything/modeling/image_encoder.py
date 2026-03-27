@@ -44,9 +44,9 @@ def boundary_consistency_loss(F_s, F_d, M, eps=1e-8):
     calculate Boundary-Consistent Alignment Los
 
     para:
-        F_s: 浅层特征 (B, H, W, C)
-        F_d: 深层特征 (B, H, W, C)
-        M: 锚点 attention map (B, 1, H, W)
+        F_s: (B, H, W, C)
+        F_d:  (B, H, W, C)
+        M: attention map (B, 1, H, W)
     return:
         loss: scalar
     """
